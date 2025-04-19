@@ -1,0 +1,45 @@
+Nombre: Ivo Vecchietti
+Email: ivo@miemail.com
+
+Fase 1:
+Para resolver esta fase, primero ejecuté la bomba con GDB usando redirección de input desde el archivo `input.txt`. Coloqué un breakpoint al inicio de la función `phase_1` (`b phase_1`) y corrí el programa (`run < input.txt`). Cuando se detuvo, inspeccioné el código ensamblador y noté que en `phase_1` se usaba una instrucción `lea rsi, [rip+0xc7c62]` seguida de un `call strings_not_equal`.
+Esto me indicó que se estaba comparando la entrada del usuario con un string constante guardado en la sección `.rodata`. Como `rsi` quedaba apuntando al string objetivo, usé `x/s $rsi` para ver cuál era el string correcto esperado por la bomba.
+Una vez identificado, lo copié en el archivo `input.txt` para que se use como entrada, y con eso la fase se desactivó correctamente.
+
+Fase 2:
+Puse un breakpoint en phase_2 y analicé el código con x/40i $rip. 
+Vi que se usaba strchr para ubicar el espacio en el input y luego se llamaba a strtoq dos veces para convertir ambos valores a enteros. 
+El resultado del primero se almacenaba en r12d y el segundo en eax. 
+Después encontré que se hacía una multiplicación entre ellos, una suma (add ebx, ebp) comparada con 0x4ed4 (decimal 20180), y un XOR (xor esi, edi) seguido de un salto condicional si el resultado no era negativo. 
+Con eso entendí que el input tenía que cumplir tres condiciones: 
+- Que ambos números fueran distintos de cero
+- Que su suma diera 20180
+- Que el XOR entre ellos fuera negativo. 
+Encontré que -10000 30180 cumplía con todo y desactivó la fase correctamente.
+
+
+
+Fase 3:
+Puse un breakpoint en phase_3 y analicé su comportamiento. 
+Vi que pedía dos entradas: una palabra y un número. Si el scanf fallaba, explotaba. 
+Luego llamaba a una función que cargaba un arreglo de palabras en memoria y finalmente a una función llamada cuenta, que implementaba una búsqueda binaria.
+Al revisar las instrucciones vi que se usaba un puntero a contador en r8, que se guardaba en r13 dentro de cuenta, y que al final de la función había un cmp DWORD PTR [rsp+0x14], 0x6 seguido de un jle explode_bomb. 
+Esto indicaba que la bomba explotaba si la búsqueda encontraba la palabra haciendo 6 comparaciones o menos.
+Para encontrar una entrada válida, puse un breakpoint condicional en *0x401fdc con la condición *(int*)$r13 == 7, para capturar la primera vez que el contador de comparaciones llegaba a 7. 
+Luego inspeccioné x/s $rdi (la palabra buscada) y x/s $rsi (la palabra del arreglo que se comparaba en ese momento). 
+Así logré encontrar una palabra que hiciera que la función cuenta realizara más de 6 comparaciones, evitando que la bomba explote.
+
+
+
+Fase 4:
+Puse un breakpoint en phase_4 y usé disas phase_4 para ver su funcionamiento. Al comienzo noté que se llama a la función string_length y luego se compara el valor retornado con 6. 
+Si no se cumple, se llama a explode_bomb, lo cual indica que la entrada debe tener exactamente 6 caracteres.
+Luego observé un bucle que recorre cada carácter del string. 
+Usando instrucciones como movzx edx, BYTE PTR [rax] seguido de and edx, 0xf, vi que se le aplicaba una máscara & 0xF al valor ASCII de cada carácter. 
+Esto equivale a quedarse solo con los 4 bits menos significativos, es decir, hacer ascii % 16. 
+El valor resultante se usaba como índice para acceder a un arreglo llamado array.0, y su contenido se sumaba a un acumulador almacenado en ecx.
+
+Con x/16dw 0x4cde20, obtuve el contenido completo de ese arreglo
+El objetivo era encontrar 6 caracteres cuya suma de valores del arreglo diera exactamente 48, ya que más adelante se hace una comparación con ese total. 
+Entonces, busqué combinaciones de índices que sus valores sumaran 48.
+Luego, para cada índice, busqué caracteres ASCII tales que ascii % 16 coincidiera. 
