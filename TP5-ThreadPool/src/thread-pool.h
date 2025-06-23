@@ -15,6 +15,10 @@
 #include <thread>      // for thread
 #include <vector>      // for vector
 #include "Semaphore.h" // for Semaphore
+#include <queue>       // para std::queue
+#include <atomic>      // para std::atomic
+
+
 
 using namespace std;
 
@@ -28,18 +32,20 @@ using namespace std;
  * (or condition variable) to signal when work is ready for the 
  * worker to process.
  */
+
 typedef struct worker {
     thread ts;
     function<void(void)> thunk;
-    /**
-     * Complete the definition of the worker_t struct here...
-     **/
+    Semaphore sem;
+    std::atomic<bool> available{true};  // Cambiado a atomic<bool>
+    mutex lock;  // Mutex para proteger el acceso a thunk solamente
 } worker_t;
+
 
 class ThreadPool {
   public:
 
-  /**
+  /**t
   * Constructs a ThreadPool configured to spawn up to the specified
   * number of threads.
   */
@@ -72,8 +78,10 @@ class ThreadPool {
     void dispatcher();
     thread dt;                              // dispatcher thread handle
     vector<worker_t> wts;                   // worker thread handles. you may want to change/remove this
-    bool done;                              // flag to indicate the pool is being destroyed
+    std::atomic<bool> done {false};         // flag to indicate the pool is being destroyed
     mutex queueLock;                        // mutex to protect the queue of tasks
+    queue<function<void(void)>> tasks;      // task queue
+    Semaphore tareasDisponibles;            // semaphore to notify dispatcher of new work
 
     /* It is incomplete, there should be more private variables to manage the structures... 
     * *
